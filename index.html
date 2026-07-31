@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="format-detection" content="telephone=no" />
-<title>QuantScope V15.1 STRICT · QUANT ENGINE</title>
+<title>QuantScope V15.1 STRICT FIX · QUANT ENGINE</title>
 <style>
   :root{
     --bg:#07101d; --bg2:#0a1424; --panel:#0d192b; --panel2:#101f34;
@@ -123,7 +123,7 @@
 <div class="app">
   <header class="header-stack">
     <div class="topbar">
-      <div class="brand">Quant<b>Scope</b> <em style="font-style:normal;color:var(--yellow);font-size:12px">V15.1 STRICT</em></div>
+      <div class="brand">Quant<b>Scope</b> <em style="font-style:normal;color:var(--yellow);font-size:12px">V15.1 STRICT FIX</em></div>
       <div class="subtitle">QUANT ENGINE · 真实行情 · 10策略回测 · 情绪周期 · 游资模型 · 执行预案</div>
       <div class="search">
         <input id="symbolInput" value="603283" maxlength="6" placeholder="输入A股代码，如 603283" />
@@ -298,7 +298,7 @@
   <section class="panel decision-panel">
     <div class="panel-head">
       <div class="panel-title"><span>05</span> 综合决策、操作计划与概率推演</div>
-      <div class="panel-actions"><span class="badge" id="decisionDataQuality">等待数据</span><span class="badge" id="decisionVersion">V15.1 STRICT</span></div>
+      <div class="panel-actions"><span class="badge" id="decisionDataQuality">等待数据</span><span class="badge" id="decisionVersion">V15.1 STRICT FIX</span></div>
     </div>
     <div class="decision-body">
       <div class="decision-controls">
@@ -378,6 +378,8 @@
 <script>
 (() => {
 'use strict';
+window.addEventListener('error',event=>{const s=document.querySelector('#dataStatus'),p=document.querySelector('#proxyState');if(s)s.textContent='页面程序异常';if(p)p.textContent='程序错误：'+(event.message||'未知错误')});
+
 const localStorage=(()=>{let native=null;const memory=new Map();try{native=window.localStorage;const key='__qs_storage_test__';native.setItem(key,'1');native.removeItem(key)}catch(_){native=null}return{getItem:key=>{try{return native?native.getItem(key):(memory.has(key)?memory.get(key):null)}catch(_){return memory.has(key)?memory.get(key):null}},setItem:(key,value)=>{const v=String(value);try{if(native)native.setItem(key,v);else memory.set(key,v)}catch(_){memory.set(key,v)}},removeItem:key=>{try{if(native)native.removeItem(key);memory.delete(key)}catch(_){memory.delete(key)}}}})();
 const $ = s => document.querySelector(s);
 const fmt = (n,d=2) => Number.isFinite(+n) ? (+n).toFixed(d) : '--';
@@ -396,7 +398,7 @@ function jsonp(url,cbParam='cb',timeout=6500){return new Promise((resolve,reject
 
 const PROXY_STORAGE_KEY='qs_market_proxy_v1';
 const DEFAULT_PROXY='https://quant-scope-proxy.3198559814.workers.dev';
-function normalizeProxy(value){let v=(value||'').trim();if(!v)return '';if(!/^https:\/\//i.test(v))v='https://'+v;return v.replace(/\/+$/,'')}
+function normalizeProxy(value){let v=(value||'').trim().replace(/[‐‑‒–—−]/g,'-').replace(/\s+/g,'');if(!v)return '';if(!/^https:\/\//i.test(v))v='https://'+v;return v.replace(/\/+$/,'')}
 function getProxyBase(){return normalizeProxy(localStorage.getItem(PROXY_STORAGE_KEY)||DEFAULT_PROXY)}
 function setProxyState(message,kind=''){const el=$('#proxyState');el.textContent=message;el.className='proxy-state'+(kind?' '+kind:'')}
 async function fetchJson(url,timeout=12000){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{const response=await fetch(url,{method:'GET',headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal});const text=await response.text();let body;try{body=JSON.parse(text)}catch(_){throw new Error('代理返回内容不是JSON')}if(!response.ok||body.ok===false)throw new Error(body.error||`HTTP ${response.status}`);return body}finally{clearTimeout(timer)}}
@@ -668,6 +670,23 @@ function exportJournal(){const blob=new Blob([JSON.stringify(state.journal,null,
 function streamOHLCLogs(){const key=`${state.symbol}-${state.daily.at(-1)?.date}`;if(state.ohlcLoggedFor===key)return;state.ohlcLoggedFor=key;state.daily.slice(-10).forEach(d=>log('DATA',`${d.date} O:${fmt(d.open)} H:${fmt(d.high)} L:${fmt(d.low)} C:${fmt(d.close)} V:${Math.round(d.volume).toLocaleString()}`))}
 function reverseStress(){if(!state.daily.length)return;const d=state.daily,last=d.at(-1),atr=(atrSeries(d,14).at(-1)||last.close*.035)/last.close*100,dd=maxDDPrice(d,90),m20=avg(d.slice(-20).map(x=>x.close)),m60=avg(d.slice(-60).map(x=>x.close)),emo=computeEmotion();let risk=30+atr*3+dd*.7+(last.close<m20?16:0)+(m20<m60?18:0)+(emo?(50-emo.score)*.35:8);risk=Math.round(clamp(risk,5,95));$('#strategyText').innerHTML=`<b>下行压力测试：</b>风险 ${risk}/100。测试情景包括跳空低开、跌破MA20、市场情绪转弱和90日回撤扩张。${risk>=70?'不宜加仓；优先降低暴露并执行硬止损。':risk>=50?'维持防守仓位，等待结构确认。':'下行压力暂不高，但仍不代表可以忽略止损。'}${emo?'':' 当前缺少真实情绪数据，已加入额外不确定性惩罚。'} 本按钮只做风险压力测试，不会下单。`;log('RISK',`下行压力测试 ${risk}/100`) }
 
+function generateStrategy(){state.active=$('#strategyType').value;state.results[state.active]=backtest(state.active,state.daily,params());renderStrategyTable();renderActiveStrategy();kChart.render();toast('策略已按当前参数重新生成');log('SIGNAL',`${strategyLabels[state.active]} 参数重算完成`)}
+function runAll(){state.playIndex=state.daily.length;compareStrategies();renderHeader();minuteChart.render();kChart.render();renderDecisionCenter();renderV15();streamOHLCLogs();$('#playStatus').textContent=`全量 ${state.daily.length} 根`;setLoadProgress(100,'分析完成')}
+function renderHeader(){document.title=`${state.name} · QuantScope V15 FINAL`;$('#reportSymbol').textContent=`${state.name} ${state.symbol}`}
+
+class LineChart{
+ constructor(canvas,tip){this.c=canvas;this.ctx=canvas.getContext('2d');this.tip=tip;this.hover=-1;if(window.ResizeObserver)new ResizeObserver(()=>this.render()).observe(canvas.parentElement);else window.addEventListener('resize',()=>this.render());canvas.addEventListener('pointermove',e=>this.move(e));canvas.addEventListener('pointerleave',()=>{this.hover=-1;tip.style.display='none';this.render()})}
+ size(){const r=this.c.getBoundingClientRect(),dpr=devicePixelRatio||1;if(this.c.width!==Math.round(r.width*dpr)||this.c.height!==Math.round(r.height*dpr)){this.c.width=Math.round(r.width*dpr);this.c.height=Math.round(r.height*dpr)}this.ctx.setTransform(dpr,0,0,dpr,0,0);return{w:r.width,h:r.height}}
+ render(){const data=state.minute;if(!data.length)return;const {w,h}=this.size(),ctx=this.ctx;ctx.clearRect(0,0,w,h);const pad={l:54,r:16,t:14,b:28},prices=data.map(x=>x.price),avgs=data.map(x=>x.avg||x.price),min=Math.min(...prices,...avgs),max=Math.max(...prices,...avgs),range=max-min||1;ctx.strokeStyle='#1d2e46';ctx.lineWidth=1;ctx.font='10px system-ui';ctx.fillStyle='#6f829b';for(let i=0;i<5;i++){const y=pad.t+(h-pad.t-pad.b)*i/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();ctx.fillText(fmt(max-range*i/4),6,y+3)}for(let i=0;i<5;i++){const x=pad.l+(w-pad.l-pad.r)*i/4;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,h-pad.b);ctx.stroke();ctx.fillText(data[Math.min(data.length-1,Math.floor((data.length-1)*i/4))].time,x-14,h-9)}
+ const x=i=>pad.l+(w-pad.l-pad.r)*i/(data.length-1),y=v=>pad.t+(max-v)/range*(h-pad.t-pad.b);
+ const grad=ctx.createLinearGradient(0,pad.t,0,h-pad.b);grad.addColorStop(0,'rgba(36,213,255,.27)');grad.addColorStop(1,'rgba(36,213,255,0)');ctx.beginPath();data.forEach((d,i)=>i?ctx.lineTo(x(i),y(d.price)):ctx.moveTo(x(i),y(d.price)));ctx.lineTo(x(data.length-1),h-pad.b);ctx.lineTo(x(0),h-pad.b);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+ ctx.beginPath();data.forEach((d,i)=>i?ctx.lineTo(x(i),y(d.price)):ctx.moveTo(x(i),y(d.price)));ctx.strokeStyle='#28d7ff';ctx.lineWidth=1.8;ctx.stroke();ctx.beginPath();data.forEach((d,i)=>i?ctx.lineTo(x(i),y(d.avg||d.price)):ctx.moveTo(x(i),y(d.avg||d.price)));ctx.strokeStyle='#ffd166';ctx.lineWidth=1.1;ctx.stroke();
+ const last=data.at(-1);ctx.fillStyle='#28d7ff';ctx.beginPath();ctx.arc(x(data.length-1),y(last.price),3.2,0,Math.PI*2);ctx.fill();
+ if(this.hover>=0){const i=this.hover,xx=x(i),yy=y(data[i].price);ctx.strokeStyle='rgba(180,208,235,.42)';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(xx,pad.t);ctx.lineTo(xx,h-pad.b);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(xx,yy,3.5,0,Math.PI*2);ctx.fill()}
+ }
+ move(e){const r=this.c.getBoundingClientRect(),x=e.clientX-r.left,padL=54,padR=16;this.hover=clamp(Math.round((x-padL)/(r.width-padL-padR)*(state.minute.length-1)),0,state.minute.length-1);const d=state.minute[this.hover];this.tip.style.display='block';this.tip.style.left=clamp(x+12,8,r.width-150)+'px';this.tip.style.top='12px';this.tip.innerHTML=`<b>${d.time}</b><br>价格 ${fmt(d.price)}<br>均价 ${fmt(d.avg||d.price)}<br>成交 ${Math.round(d.volume).toLocaleString()}`;this.render()}
+}
+
 class KChart{
  constructor(canvas,tip){this.c=canvas;this.ctx=canvas.getContext('2d');this.tip=tip;this.hover=-1;if(window.ResizeObserver)new ResizeObserver(()=>this.render()).observe(canvas.parentElement);else window.addEventListener('resize',()=>this.render());canvas.addEventListener('pointermove',e=>this.move(e));canvas.addEventListener('pointerleave',()=>{this.hover=-1;tip.style.display='none';this.render()})}
  size(){const r=this.c.getBoundingClientRect(),dpr=devicePixelRatio||1;if(this.c.width!==Math.round(r.width*dpr)||this.c.height!==Math.round(r.height*dpr)){this.c.width=Math.round(r.width*dpr);this.c.height=Math.round(r.height*dpr)}this.ctx.setTransform(dpr,0,0,dpr,0,0);return{w:r.width,h:r.height}}
@@ -702,7 +721,7 @@ $('#saveJournalBtn').onclick=saveJournal;$('#exportJournalBtn').onclick=exportJo
 $('#historyWindow').oninput=()=>{$('#historyWindowLabel').textContent=$('#historyWindow').value+'根';kChart.render()};
 $('#playBtn').onclick=play;$('#stepBtn').onclick=()=>{clearInterval(state.playTimer);state.playTimer=null;$('#playBtn').textContent='播放';if(state.playIndex>=state.daily.length)state.playIndex=Math.min(40,state.daily.length);state.playIndex=Math.min(state.daily.length,state.playIndex+1);$('#playStatus').textContent=`${state.playIndex} / ${state.daily.length}`;kChart.render()};$('#resetPlay').onclick=()=>{clearInterval(state.playTimer);state.playTimer=null;state.playIndex=Math.min(40,state.daily.length);$('#playBtn').textContent='播放';$('#playStatus').textContent=`${state.playIndex} / ${state.daily.length}`;kChart.render()};$('#speedSelect').onchange=()=>{if(state.playTimer){clearInterval(state.playTimer);state.playTimer=null;play()}};
 ['lookback','volMult','stopLoss','takeProfit','maxHold','capital','minWin','minOdds'].forEach(id=>$('#'+id).addEventListener('change',()=>log('DATA',`参数 ${id} 已更新`)));
-loadJournal();renderJournal();setLoadProgress(12,'QuantScope V15 初始化');log('DATA','QuantScope V15.1 STRICT 初始化完成');log('SIGNAL','默认启用“趋势突破 → 缩量回踩 → 放量反包确认”模型');const qsParams=new URLSearchParams(location.search),proxyParam=normalizeProxy(qsParams.get('proxy'));if(proxyParam){localStorage.setItem(PROXY_STORAGE_KEY,proxyParam);$('#proxyInput').value=proxyParam}if(getProxyBase())setProxyState('已读取行情代理，正在连接…','ok');const localFile=location.protocol==='file:'||location.protocol==='about:';if(qsParams.has('demo')||localFile){state.forceOffline=true;setProxyState(localFile?'本地文件预览 · 使用演示数据':'演示模式 · 未请求真实行情','bad');loadDemo(state.symbol,localFile?'本地文件 · 自动离线演示':'离线演示模式')}else{fetchData(state.symbol)};
+loadJournal();renderJournal();setLoadProgress(12,'QuantScope V15 初始化');log('DATA','QuantScope V15.1 STRICT FIX 初始化完成');log('SIGNAL','默认启用“趋势突破 → 缩量回踩 → 放量反包确认”模型');const qsParams=new URLSearchParams(location.search),proxyParam=normalizeProxy(qsParams.get('proxy'));if(proxyParam){localStorage.setItem(PROXY_STORAGE_KEY,proxyParam);$('#proxyInput').value=proxyParam}if(getProxyBase())setProxyState('已读取行情代理，正在连接…','ok');const localFile=location.protocol==='file:'||location.protocol==='about:';if(qsParams.has('demo')||localFile){state.forceOffline=true;setProxyState(localFile?'本地文件预览 · 使用演示数据':'演示模式 · 未请求真实行情','bad');loadDemo(state.symbol,localFile?'本地文件 · 自动离线演示':'离线演示模式')}else{fetchData(state.symbol)};
 })();
 </script>
 </body>
